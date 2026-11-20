@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>24-Fret Fretboard</title>
+<style>
+:root{--bg:#f6f3ea;--fg:#1d1d1b;--panel:#fff;--line:#d8d2c0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17171a;--fg:#ecebe6;--panel:#242428;--line:#3a3a40}}
+:root[data-theme="dark"]{--bg:#17171a;--fg:#ecebe6;--panel:#242428;--line:#3a3a40}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;padding:16px}
+h1{font-size:20px;margin:0 0 12px}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px}
+label{display:flex;flex-direction:column;font-size:12px;gap:3px;opacity:.9}
+select,button{font-size:15px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--fg)}
+#info{font-size:14px;min-height:20px;margin:6px 0 10px}
+.scroll{overflow-x:auto;border-radius:10px;padding-bottom:6px}
+.board{display:grid;grid-template-columns:repeat(25,54px);width:max-content;background:#f9e8a0;border-radius:10px;padding:6px 0;position:relative}
+#ov{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:visible}
+.cell{height:48px;position:relative;border-right:2px solid #c9b565;display:flex;align-items:center;justify-content:center}
+.cell.f0{border-right:5px solid #7a6a30;background:#f6f3ea22}
+.cell::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;background:#9a8a45}
+.dot{position:relative;z-index:1;width:38px;height:38px;border-radius:50%;color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;transition:opacity .15s,transform .15s}
+.dot.off{opacity:.1}
+.dot.on{transform:scale(1.08);box-shadow:0 0 0 3px #fff,0 0 0 5px #222}
+.dot.root{box-shadow:0 0 0 3px #ffd400,0 0 0 5px #222;transform:scale(1.12)}
+.num{text-align:center;font-weight:700;font-size:14px;color:#3a3418;height:26px;line-height:26px}
+.num.mk{background:#0001;border-radius:6px}
+.g0{background:#6ab04c}.g1{background:#111}.g2{background:#1e40af}.g3{background:#b91c1c}
+.c0{background:#dc2626}.c1{background:#d97706}.c2{background:#16a34a}.c3{background:#2563eb}.c4{background:#9333ea}
+.chip{display:inline-block;color:#fff;font-weight:700;font-size:12px;padding:3px 9px;border-radius:999px;margin:2px 3px 2px 0;border:1.5px solid #000}
+.dot.c0,.dot.c1,.dot.c2,.dot.c3,.dot.c4{border:1.5px solid #000}
+.dot.on.c0,.dot.on.c1,.dot.on.c2,.dot.on.c3,.dot.on.c4{box-shadow:none}
+</style>
+</head>
+<body>
+<h1>24-Fret Fretboard</h1>
+<div class="controls">
+  <label>Isolate note
+    <select id="noteSel"></select>
+  </label>
+  <label>Chord root
+    <select id="rootSel"></select>
+  </label>
+  <label>Chord type
+    <select id="typeSel"></select>
+  </label>
+  <label>Position
+    <select id="posSel"></select>
+  </label>
+  <label id="setWrap" style="display:none">Chord shapes on
+    <select id="setSel"></select>
+  </label>
+  <label id="shapeWrap" style="display:none">Shape
+    <select id="shapeSel"></select>
+  </label>
+  <label>Labels
+    <select id="lblSel"><option value="note">Note names</option><option value="int">Intervals</option></select>
+  </label>
+  <label>&nbsp;<button id="outBtn">Outlines: On</button></label>
+  <label>&nbsp;<button id="resetBtn">Reset</button></label>
+</div>
+<div id="info"></div>
+<div class="scroll"><div class="board" id="board"></div></div>
+<script>
+const N=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const OPEN=[4,11,7,2,9,4]; // high E at top → low E at bottom
+const NAMES=['E','B','G','D','A','E'];
+const TYPES={
+ 'Major':[0,4,7],'Minor':[0,3,7],'Dominant 7':[0,4,7,10],'Major 7':[0,4,7,11],'Minor 7':[0,3,7,10],
+ 'Diminished':[0,3,6],'Diminished 7':[0,3,6,9],'Half-dim (m7b5)':[0,3,6,10],'Augmented':[0,4,8],
+ 'Sus2':[0,2,7],'Sus4':[0,5,7],'6':[0,4,7,9],'Minor 6':[0,3,7,9],'Add9':[0,2,4,7],'9':[0,2,4,7,10],'Minor 9':[0,2,3,7,10]
+};
+const IV=['R','b2','2','b3','3','4','b5','5','b6','6','b7','7'];
+const POS=[['All positions (full neck)',0,24],['Position 1 · frets 0–4',0,4],['Position 2 · frets 2–6',2,6],['Position 3 · frets 4–8',4,8],['Position 4 · frets 6–10',6,10],['Position 5 · frets 8–12',8,12],['Position 6 · frets 10–14',10,14],['Position 7 · frets 12–16',12,16],['Position 8 · frets 14–18',14,18],['Position 9 · frets 16–20',16,20],['Position 10 · frets 18–22',18,22],['Position 11 · frets 20–24',20,24]];
+const $=id=>document.getElementById(id);
+const noteSel=$('noteSel'),rootSel=$('rootSel'),typeSel=$('typeSel'),posSel=$('posSel'),lblSel=$('lblSel'),board=$('board'),info=$('info');
+noteSel.innerHTML='<option value="-1">All notes</option>'+N.map((n,i)=>`<option value="${i}">${n} – show every ${n}</option>`).join('');
+rootSel.innerHTML='<option value="-1">No chord</option>'+N.map((n,i)=>`<option value="${i}">${n}</option>`).join('');
+typeSel.innerHTML=Object.keys(TYPES).map(k=>`<option>${k}</option>`).join('');
+posSel.innerHTML=POS.map((p,i)=>`<option value="${i}">${p[0]}</option>`).join('');
+
+const grp=f=>f===0?'g0':'g'+(1+Math.floor((f-1)/4)%3);
+const dots=[];
+for(let s=0;s<6;s++){
+  for(let f=0;f<=24;f++){
+    const c=document.createElement('div');c.className='cell f'+(f===0?'0':'');
+    const d=document.createElement('div');
+    const n=(OPEN[s]+f)%12;
+    d.className='dot '+grp(f);d.dataset.n=n;d.dataset.f=f;d.textContent=N[n];
+    c.appendChild(d);board.appendChild(c);dots.push(d);
+  }
+}
+const marks=[3,5,7,9,12,15,17,19,21,24];
+for(let f=0;f<=24;f++){
+  const d=document.createElement('div');
+  d.className='num'+(marks.includes(f)?' mk':'');
+  d.textContent=f===0?'Open':f;board.appendChild(d);
+}
+
+const ov=document.createElementNS('http://www.w3.org/2000/svg','svg');ov.id='ov';board.appendChild(ov);
+const setSel=$('setSel'),shapeSel=$('shapeSel'),setWrap=$('setWrap'),shapeWrap=$('shapeWrap');
+let SH=[],CUR=[],sig='',OUT=true;
+function findShapes(tones,root,pos){
+  const k=Math.min(tones.length,4),out=[];
+  for(let s0=0;s0<=6-k;s0++){
+    const cand=[];
+    for(let j=0;j<k;j++){const a=[];for(let f=pos[1];f<=pos[2];f++)if(tones.includes((OPEN[s0+j]+f)%12))a.push(f);cand.push(a);}
+    const rec=(j,fr)=>{
+      if(j===k){
+        const pcs=fr.map((f,i)=>(OPEN[s0+i]+f)%12);
+        if(new Set(pcs).size<k||!pcs.includes(root))return;
+        const mn=Math.min(...fr),mx=Math.max(...fr);
+        if(mx-mn>(k===3?3:4))return;
+        out.push({s0,k,fr,pcs,mn,mx,root});return;
+      }
+      cand[j].forEach(f=>rec(j+1,fr.concat(f)));
+    };
+    rec(0,[]);
+  }
+  return out.sort((a,b)=>a.mn-b.mn||a.s0-b.s0);
+}
+function hull(P){
+  P=P.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);if(P.length<3)return P;
+  const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const lo=[],up=[];
+  for(const p of P){while(lo.length>1&&cr(lo[lo.length-2],lo[lo.length-1],p)<=0)lo.pop();lo.push(p);}
+  for(const p of P.slice().reverse()){while(up.length>1&&cr(up[up.length-2],up[up.length-1],p)<=0)up.pop();up.push(p);}
+  up.pop();lo.pop();return lo.concat(up);
+}
+function fillShapes(){
+  const sv=+setSel.value;
+  CUR=SH.filter(h=>sv<0||h.s0===sv);
+  shapeSel.innerHTML='<option value="-1">All shapes (outlined)</option><option value="-2">No outlines</option>'+CUR.map((h,i)=>`<option value='${i}'>Str ${h.s0+1}–${h.s0+h.k} · fret ${h.mn===h.mx?h.mn:h.mn+'–'+h.mx} · ${h.pcs.map(p=>N[p]).join('-')} (${IV[(h.pcs[h.k-1]-h.root+12)%12]} bass)</option>`).join('');
+}
+function drawShapes(tones,root,pos){
+  ov.innerHTML='';
+  const show=tones?'flex':'none';setWrap.style.display=show;shapeWrap.style.display=show;
+  if(!tones){SH=[];sig='';return;}
+  const s2=root+'|'+typeSel.value+'|'+posSel.value;
+  if(s2!==sig){
+    sig=s2;SH=findShapes(tones,root,pos);
+    const k=Math.min(tones.length,4);let o='<option value="-1">All string sets</option>';
+    for(let s=0;s<=6-k;s++)o+=`<option value='${s}'>Strings ${s+1}–${s+k}</option>`;
+    setSel.innerHTML=o;fillShapes();
+  }
+  const sel=+shapeSel.value;
+  const list=!OUT?[]:sel>=0?[CUR[sel]]:(sel===-1?CUR:[]);
+  if(sel>=0&&CUR[sel]){
+    const h=CUR[sel],keep=new Set(h.fr.map((f,i)=>(h.s0+i)*25+f));
+    dots.forEach((d,i)=>{if(!keep.has(i)){d.classList.remove('on','root');d.classList.add('off');}});
+  }
+  const outer=sel>=0?62:60,inner=56;let defs='',paths='';
+  list.forEach((h,i)=>{
+    if(!h)return;
+    const pts=hull(h.fr.map((f,j)=>[f*54+27,6+(h.s0+j)*48+24]));
+    const d='M'+pts.map(p=>p.join(' ')).join('L')+'Z';
+    defs+=`<mask id='m${i}' maskUnits='userSpaceOnUse' x='-60' y='-60' width='1600' height='500'><rect x='-60' y='-60' width='1600' height='500' fill='#fff'/><path d='${d}' fill='#000' stroke='#000' stroke-width='${inner}' stroke-linejoin='round'/></mask>`;
+    paths+=`<path d='${d}' fill='#000' stroke='#000' stroke-width='${outer}' stroke-linejoin='round' mask='url(#m${i})'/>`;
+  });
+  ov.innerHTML='<defs>'+defs+'</defs>'+paths;
+}
+setSel.onchange=()=>{fillShapes();update();};
+shapeSel.onchange=()=>update();
+$('outBtn').onclick=e=>{OUT=!OUT;e.target.textContent='Outlines: '+(OUT?'On':'Off');update();};
+function update(){
+  const nsel=+noteSel.value,root=+rootSel.value,type=typeSel.value,pos=POS[+posSel.value],mode=lblSel.value;
+  let tones=null;
+  if(root>=0){tones=TYPES[type].map(i=>(root+i)%12);}
+  dots.forEach(d=>{
+    const n=+d.dataset.n,f=+d.dataset.f;
+    d.className='dot '+grp(f);
+    d.textContent=N[n];
+    if(tones){
+      const inPos=f>=pos[1]&&f<=pos[2];
+      if(inPos&&tones.includes(n)){
+        d.classList.add(n===root?'root':'on','c'+tones.indexOf(n));
+        if(mode==='int')d.textContent=IV[(n-root+12)%12];
+      }else d.classList.add('off');
+    }else if(nsel>=0){
+      d.classList.add(n===nsel?'on':'off');
+    }
+  });
+  if(tones){
+    info.innerHTML=`<b>${N[root]} ${type}</b> · ${pos[0]}<br>`+TYPES[type].map((i,k)=>`<span class="chip c${k}">${IV[i]} · ${N[(root+i)%12]}</span>`).join('');
+  }else if(nsel>=0){
+    info.textContent=`Showing every ${N[nsel]} on the 24-fret neck.`;
+  }else info.textContent='Pick a note to isolate, or choose a chord and position.';
+  drawShapes(tones,root,pos);
+}
+noteSel.onchange=()=>{if(+noteSel.value>=0)rootSel.value='-1';update()};
+rootSel.onchange=()=>{if(+rootSel.value>=0)noteSel.value='-1';update()};
+[typeSel,posSel,lblSel].forEach(e=>e.onchange=update);
+$('resetBtn').onclick=()=>{noteSel.value='-1';rootSel.value='-1';posSel.value='0';lblSel.value='note';update()};
+update();
+</script>
+</body>
+</html>
